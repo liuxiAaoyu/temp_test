@@ -66,6 +66,14 @@ def _make_transition(num_output_features):
     return out
 
 
+def _make_transition_o(num_output_features):
+    out = nn.HybridSequential(prefix='')
+    out.add(nn.BatchNorm())
+    out.add(nn.Activation('relu'))
+    out.add(nn.Conv2D(num_output_features, kernel_size=1, use_bias=False))
+    return out
+
+
 class DUC(HybridBlock):
     def __init__(self, label_num, ignore_lable, aspp_num, aspp_stride, cell_cap, **kwargs):
         super(DUC, self).__init__(**kwargs)
@@ -129,21 +137,24 @@ class DenseNet_x(HybridBlock):
             num_features = num_features//2
             # self.features.add(_make_dense_block(
             #     block_config[1], bn_size, growth_rate, dropout, 2))
-            num_features = num_features + block_config[1]*growth_rate
-            # self.features.add(_make_transition(num_features//2))
-            num_features = num_features//2
 
-            pre_features = mx.gluon.model_zoo.vision.densenet121(pretrained=True).features
-            for i in range(8):
+            pre_features = mx.gluon.model_zoo.vision.densenet121(
+                pretrained=True).features
+            for i in range(7):
                 self.features.add(pre_features[i])
 
             self.features_x = nn.HybridSequential(prefix='')
+
+            num_features = num_features + block_config[1]*growth_rate
+            self.features_x.add(_make_transition_o(num_features//2))
+            num_features = num_features//2
+
             dalites = [1, 2, 5, 9, 1, 2, 5, 9, 1, 2, 5,
                        9, 1, 2, 5, 9, 1, 2, 5, 9, 1, 2, 5, 9]
             self.features_x.add(_make_dense_block_x(
                 dalites, block_config[2], bn_size, growth_rate, dropout, 3))
             num_features = num_features + block_config[2]*growth_rate
-            self.features_x.add(_make_transition(num_features//2))
+            self.features_x.add(_make_transition_o(num_features//2))
             num_features = num_features//2
 
             dalites = [2, 5, 9, 17, 2, 5, 9, 17, 2, 5, 9, 17, 2, 5, 9, 17]
@@ -171,9 +182,40 @@ if __name__ == '__main__':
     net.features_x.initialize(mx.init.Xavier())
     net.hybridize()
     x = mx.nd.random_normal(shape=(16, 3, 480, 480))
-    print(net(x).shape)
+    for i in net.features:
+        x = i(x)
+        print(i.name, x.shape)
+    for i in net.features_x:
+        x = i(x)
+        print(i.name, x.shape)
 
+    x = mx.nd.random_normal(shape=(16, 3, 480, 480))
     pre_net = mx.gluon.model_zoo.vision.densenet121(pretrained=True)
-
-    for net.features_x[0].collect_params
+    for i in pre_net.features:
+        x = i(x)
+        print(i.name, x.shape)
+    print(net.features[0].weight.data())
+    names = [i for i in net.features_x[0].collect_params()]
+    for i in names:
+        j=pre_net.features.prefix+i[len(net.features_x.prefix):]
+        j=j[:j.rfind('0')]+j[j.rfind('0'):].replace('0','3')
+        net.features_x.params.get(i).set_data(pre_net.features.params.get(j))
+    
+    names = [i for i in net.features_x[1].collect_params()]
+    for i in names:
+        net.features_x.params.get(i).set_data(pre_net.features.params.get(pre_net.features.prefix+i[len(net.features_x.prefix):]))
+    
+    names = [i for i in net.features_x[2].collect_params()]
+    for i in names:
+        j=pre_net.features.prefix+i[len(net.features_x.prefix):]
+        j=j[:j.rfind('1')]+j[j.rfind('1'):].replace('1','4')
+        net.features_x.params.get(i).set_data(pre_net.features.params.get(j))
+    
+    names = [i for i in net.features_x[3].collect_params()]
+    for i in names:
+        net.features_x.params.get(i).set_data(pre_net.features.params.get(pre_net.features.prefix+i[len(net.features_x.prefix):]))
+    #net.save_params('densenet121HDCUDC.params')
+    names1 = [i for i in net.collect_params()]
+    names2 = [i for i in pre_net.collect_params()]
+    print(len(names1),len(names2))
     print("finish")
