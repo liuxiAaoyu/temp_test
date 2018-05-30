@@ -163,7 +163,7 @@ class DenseNet_x(HybridBlock):
 
             self.features_x.add(self._make_layer(DUC, 'duc'))
 
-    def _make_layer(self, block, stage_index, label_num=4, ignore_lable=255, aspp_num=4, aspp_stride=6, cell_cap=64):
+    def _make_layer(self, block, stage_index, label_num=2, ignore_lable=255, aspp_num=4, aspp_stride=6, cell_cap=64):
         layer = nn.HybridSequential(prefix='stage%s_' % stage_index)
         with layer.name_scope():
             layer.add(block(label_num, ignore_lable,

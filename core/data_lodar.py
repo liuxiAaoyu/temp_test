@@ -61,7 +61,7 @@ class TuSimpleDataset(dataset.Dataset):
         base = mx.image.imread(base_filepath)
         assert 'gt' in self._image_list[idx], "Couldn't find ground truth for:" + \
             _iamge_list[idx]['base']
-        mask = np.zeros(list(base.shape)[:3], np.uint8)
+        mask = np.zeros(list(base.shape)[:2]+[1], np.uint8)
         width = np.linspace(2, 30, 511)
         for i, lane in enumerate(self._image_list[idx]['gt'], start=1):
             #cv2.polylines(mask, np.int32([lane]), isClosed=False, color=(255,255,255), thickness=15)
@@ -74,7 +74,7 @@ class TuSimpleDataset(dataset.Dataset):
             lane_r = [(x+(width[y-200] if y >= 200 else 2), y)
                       for index, (x, y) in enumerate(lane)]
             lane_r.reverse()
-            cv2.fillPoly(mask, np.int32([lane_l+lane_r]), (255, 255, 255))
+            cv2.fillPoly(mask, np.int32([lane_l+lane_r]), (1))
         mask_nd = mx.nd.array(mask)
         if self._transform is not None:
             return self._transform(base, mask_nd)
@@ -167,7 +167,9 @@ def plot_mx_arrays(arrays):
     """
     plt.subplots(figsize=(12, 4))
     for idx, array in enumerate(arrays):
-        assert array.shape[2] == 3, "RGB Channel should be last"
+        #assert array.shape[2] == 3, "RGB Channel should be last"
+        if array.shape[2] == 1:
+            array = mx.ndarray.concat(array, array, array, dim=2)
         plt.subplot(1, 2, idx+1)
         #print((array.clip(0, 255)/255))
         plt.imshow((array.clip(0, 255)/255).asnumpy())

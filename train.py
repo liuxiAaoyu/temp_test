@@ -90,17 +90,19 @@ image_list = data_lodar.image_list(opt.dataset_dir, 0.9)
 train_dataset = data_lodar.TuSimpleDataset(opt.dataset_dir, image_list.train_list, data_lodar.joint_transform)
 valid_dataset = data_lodar.TuSimpleDataset(opt.dataset_dir, image_list.valid_list, data_lodar.joint_transform_valid)
 
-train_data_loader = gluon.data.DataLoader(train_dataset, batch_size, shuffle=True, num_workers=CPU_COUNT)
-valid_data_loader = gluon.data.DataLoader(valid_dataset, batch_size, num_workers=CPU_COUNT)
+train_data_loader = gluon.data.DataLoader(train_dataset, batch_size, shuffle=True, last_batch='keep', num_workers=CPU_COUNT)
+valid_data_loader = gluon.data.DataLoader(valid_dataset, batch_size, last_batch='keep', num_workers=CPU_COUNT)
 
 
 def test(ctx, val_data):
     metric.reset()
     for batch_idx, (data,label) in enumerate(val_data):
-        outputs=[]
-        for x in data:
-            outputs.append(net(x))
-        metric.update(label, outputs)
+        # outputs=[]
+        # for x in data:
+        #     outputs.append(net(x))
+        # metric.update(label, outputs)
+        outputs = net(data)
+        metric.update([label], [outputs])
     return metric.get()
 
 def update_learning_rate(lr, trainer, epoch, ratio, steps):
@@ -108,15 +110,65 @@ def update_learning_rate(lr, trainer, epoch, ratio, steps):
     trainer.set_learning_rate(new_lr)
     return trainer
 
-def save_checkpoint():
-    pass
+def save_checkpoint(epoch, top1, best_acc):
+    if opt.save_frequency and (epoch + 1) % opt.save_frequency == 0:
+        fname = os.path.join(opt.prefix, '%s_%d_acc_%.4f.params' % (opt.model, epoch, top1))
+        net.save_params(fname)
+        logger.info('[Epoch %d] Saving checkpoint to %s with Accuracy: %.4f', epoch, fname, top1)
+    if top1 > best_acc[0]:
+        best_acc[0] = top1
+        fname = os.path.join(opt.prefix, '%s_best.params' % (opt.model))
+        net.save_params(fname)
+        logger.info('[Epoch %d] Saving checkpoint to %s with Accuracy: %.4f', epoch, fname, top1)
 
 def train(opt,ctx):
     if isinstance(ctx, mx.Context):
         ctx=[ctx]
     kv = mx.kv.create(opt.kvstore)
     net.collect_params().reset_ctx(ctx)
-    trainer = gluon.Trainer()
+    trainer = gluon.Trainer(net.collect_params(), 'sgd', {'learning_rate': opt.lr, 'wd': opt.wd, 'momentum':opt.momentum, 'multi_precision': True}, kvstore=kv)
+    loss = gluon.loss.SoftmaxCrossEntropyLoss()
+
+    total_time = 0
+    num_epochs = 0
+    best_acc = [0]
+    for epoch in range(opt.start_epoch, opt.epochs):
+        trainer = update_learning_rate(opt.lr, trainer, epoch, opt.lr_factor,lr_steps)
+        tic = time.time()
+        metric.reset()
+        btic = time.time()
+        for i, (data, label) in enumerate(train_data_loader):
+            data = data.as_in_context(ctx)
+            lablel = label.as_in_context(ctx)
+            with mx.autograd.record():
+                output = net(data)
+                L = loss(output, label)    
+                L.backward()
+            trainer.step(data.shape[0])
+            metric.update([label],[output])
+            if opt.log_interval and not (i+1)%opt.log_interval:
+                name, acc = metric.get()
+                logger.info('Epoch[%d] batch [%d]\t Speed: %f samples/sec\t%s=%f, %s=%f'%(
+                    epoch, i, batch_size/(time.time-btic),name[0],acc[0],name[1],acc[1]
+                ))
+            btic = time.time()
+        epoch_time = time.time()-tic
+        
+        if num_epochs>0:
+            total_time = total_time + epoch_time
+        num_epochs = num_epochs + 1
+
+        name, acc = metric.get()
+        logger.info('[Epoch %d] training: %s=%f, %s=%f'%(epoch, name[0], acc[0], name[1], acc[1]))
+        logger.info('[Epoch %d] time cost: %f'%(epoch, epoch_time))
+        name, val_acc = test(ctx, valid_data_loader)
+        logger.info('[Epoch %d] validation: %s=%f, %s=%f'%(epoch, name[0], val_acc[0], name[1], val_acc[1]))
+
+        # save model if meet requirements
+        save_checkpoint(epoch, val_acc[0], best_acc)
+    if num_epochs > 1:
+        print('Average epoch time: {}'.format(float(total_time)/(num_epochs - 1)))
+
 
 
 def main():
