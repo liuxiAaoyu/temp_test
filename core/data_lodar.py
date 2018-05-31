@@ -1,5 +1,6 @@
 import collections
 import mxnet as mx
+from mxnet import gluon
 from mxnet.gluon.data import dataset
 import os
 import numpy as np
@@ -127,13 +128,16 @@ def joint_transform(base, mask):
 
     ### Augmentation Part 1: positional
     aug_joint = positional_augmentation(joint)
-
     ### Split
     aug_base = aug_joint[:, :, :base_channels]
     aug_mask = aug_joint[:, :, base_channels:]
 
     ### Augmentation Part 2: color
     aug_base = color_augmentation(aug_base)
+
+    aug_base = mx.nd.transpose(aug_base, (2,0,1))
+    aug_mask = mx.nd.transpose(aug_mask, (2,0,1))
+    aug_mask = aug_mask.flatten()
 
     return aug_base, aug_mask
 
@@ -158,6 +162,10 @@ def joint_transform_valid(base, mask):
     aug_base = aug_joint[:, :, :base_channels]
     aug_mask = aug_joint[:, :, base_channels:]
 
+    aug_base = mx.nd.transpose(aug_base, (2,0,1))
+    aug_mask = mx.nd.transpose(aug_mask, (2,0,1))
+    aug_mask = aug_mask.flatten()
+
     return aug_base, aug_mask
 
 
@@ -168,6 +176,7 @@ def plot_mx_arrays(arrays):
     plt.subplots(figsize=(12, 4))
     for idx, array in enumerate(arrays):
         #assert array.shape[2] == 3, "RGB Channel should be last"
+        array = mx.nd.transpose(array, (1,2,0))
         if array.shape[2] == 1:
             array = mx.ndarray.concat(array, array, array, dim=2)
         plt.subplot(1, 2, idx+1)
@@ -176,7 +185,7 @@ def plot_mx_arrays(arrays):
 
 
 if __name__ == '__main__':
-    image_dir = '/media/ihorse/Data/tmp/tusimple/train_set'
+    image_dir = '/media/xiaoyu/Document/data/TuSimple_Lane/train_set'
     image_list = image_list(image_dir, 0.9)
     dataset = TuSimpleDataset(image_dir, image_list.train_list, joint_transform)
     print(dataset.__len__())

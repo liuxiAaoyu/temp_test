@@ -117,7 +117,7 @@ densenet_spec = {121: (64, 32, [6, 12, 24, 16]),
 
 
 class DenseNet_x(HybridBlock):
-    def __init__(self, bn_size=4, dropout=0, classes=1000, **kwargs):
+    def __init__(self, bn_size=4, dropout=0, classes=2, **kwargs):
         super(DenseNet_x, self).__init__(**kwargs)
         with self.name_scope():
             num_init_features, growth_rate, block_config = densenet_spec[121]
@@ -194,28 +194,35 @@ if __name__ == '__main__':
     for i in pre_net.features:
         x = i(x)
         print(i.name, x.shape)
-    print(net.features[0].weight.data())
-    names = [i for i in net.features_x[0].collect_params()]
-    for i in names:
-        j=pre_net.features.prefix+i[len(net.features_x.prefix):]
-        j=j[:j.rfind('0')]+j[j.rfind('0'):].replace('0','3')
-        net.features_x.params.get(i).set_data(pre_net.features.params.get(j))
+    #print(net.features[0].weight.data())
+    x = mx.nd.zeros(shape=(16, 3, 480, 480))
+    net(x)
+
+    # names = [i for i in net.features_x[0].collect_params()]
+    # for i in names:
+    #     j=i[len(net.features_x.prefix):]
+    #     j=j[:j.rfind('0')]+j[j.rfind('0'):].replace('0','3')
+    #     #net.features_x.params.get(i[len(net.features_x.prefix):]).initialize()
+    #     net.features_x.params.get(i[len(net.features_x.prefix):]).set_data(pre_net.features.params.get(j))
     
-    names = [i for i in net.features_x[1].collect_params()]
-    for i in names:
-        net.features_x.params.get(i).set_data(pre_net.features.params.get(pre_net.features.prefix+i[len(net.features_x.prefix):]))
+    # names = [i for i in net.features_x[1].collect_params()]
+    # for i in names:
+    #     net.features_x.params.get(i).set_data(pre_net.features.params.get(pre_net.features.prefix+i[len(net.features_x.prefix):]))
     
-    names = [i for i in net.features_x[2].collect_params()]
-    for i in names:
-        j=pre_net.features.prefix+i[len(net.features_x.prefix):]
-        j=j[:j.rfind('1')]+j[j.rfind('1'):].replace('1','4')
-        net.features_x.params.get(i).set_data(pre_net.features.params.get(j))
+    # names = [i for i in net.features_x[2].collect_params()]
+    # for i in names:
+    #     j=pre_net.features.prefix+i[len(net.features_x.prefix):]
+    #     j=j[:j.rfind('1')]+j[j.rfind('1'):].replace('1','4')
+    #     net.features_x.params.get(i).set_data(pre_net.features.params.get(j))
     
-    names = [i for i in net.features_x[3].collect_params()]
-    for i in names:
-        net.features_x.params.get(i).set_data(pre_net.features.params.get(pre_net.features.prefix+i[len(net.features_x.prefix):]))
-    #net.save_params('densenet121HDCUDC.params')
+    # names = [i for i in net.features_x[3].collect_params()]
+    # for i in names:
+    #     net.features_x.params.get(i).set_data(pre_net.features.params.get(pre_net.features.prefix+i[len(net.features_x.prefix):]))
+    
     names1 = [i for i in net.collect_params()]
     names2 = [i for i in pre_net.collect_params()]
+
+    net.save_params('densenet121HDCUDC.params')
+
     print(len(names1),len(names2))
     print("finish")
