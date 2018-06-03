@@ -51,7 +51,7 @@ class TuSimpleDataset(dataset.Dataset):
     def __init__(self, root, image_list, transform=None):
         self._root = os.path.expanduser(root)
         self._transform = transform
-        self._exts = ['.jph', '.jpeg', '.png']
+        self._exts = ['.jpg', '.jpeg', '.png']
         self.__count = 0
         self._image_list = image_list
 
@@ -98,14 +98,14 @@ def positional_augmentation(joint):
     # aug = mx.image.ResizeAug(resize_size)
     # aug_joint = aug(aug_joint)
     # Add more translation/scale/rotation augmentations here...
-    aug = mx.image.RandomSizedCropAug(size=(crop_width, crop_height), area=0.65, ratio=(0.75,1.25), interp=0)
+    aug = mx.image.RandomSizedCropAug(size=(crop_width, crop_height), area=(0.1,1.5), ratio=(0.2,1.8), interp=0)
     aug_joint = aug(joint)
     return aug_joint
 
 
 def color_augmentation(base):
     # Only applied to the base image, and not the mask layers.
-    aug = mx.image.ColorJitterAug(brightness=0.2, contrast=0.2, saturation=0.2)
+    aug = mx.image.ColorJitterAug(brightness=0.5, contrast=0.5, saturation=0.5)
     aug_base = aug(base)
     # Add more color augmentations here...
 
@@ -156,8 +156,12 @@ def joint_transform_valid(base, mask):
     joint = mx.nd.concat(base, mask, dim=2)
 
     ### Augmentation Part 1: positional
+    crop_height = 600
+    crop_width = 800
+    # Watch out: weight before height in size param!
+    #aug = mx.image.RandomCropAug(size=(crop_width, crop_height))
+    #aug_joint = aug(joint)
     aug_joint = positional_augmentation(joint)
-
     ### Split
     aug_base = aug_joint[:, :, :base_channels]
     aug_mask = aug_joint[:, :, base_channels:]

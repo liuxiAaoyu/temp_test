@@ -1,6 +1,7 @@
 import argparse, time, os
 import logging
 from multiprocessing import cpu_count
+import matplotlib.pyplot as plt
 
 import mxnet as mx
 from mxnet import gluon
@@ -13,7 +14,7 @@ from core import metrics
 from core.loss import MySoftmaxCrossEntropyLoss
 
 logging.basicConfig(level=logging.INFO)
-fh = logging.FileHandler('train.log')
+fh = logging.FileHandler('test.log')
 logger = logging.getLogger()
 formatter = logging.Formatter('%(message)s')
 fh.setFormatter(formatter)
@@ -55,11 +56,11 @@ parser.add_argument('--use-pretrained', action='store_false',
                     help='enable using pretrained model from gluon.')
 parser.add_argument('--prefix', default='models', type=str,
                     help='path to checkpoint prefix, default is current working dir')
-parser.add_argument('--start-epoch', default=0, type=int,
+parser.add_argument('--start-epoch', default=1, type=int,
                     help='starting epoch, 0 for fresh training, > 0 to resume')
-parser.add_argument('--resume', type=str, default='/home/xiaoyu/Documents/Segmentation/models/densenet121_8_acc_0.7985.params',
+parser.add_argument('--resume', type=str, default='/home/xiaoyu/Documents/Segmentation/models/densenet121_19_acc_0.7891.params',
                     help='path to saved weight where you want resume')
-parser.add_argument('--lr-factor', default=0.8, type=float,
+parser.add_argument('--lr-factor', default=0.1, type=float,
                     help='learning rate decay ratio')
 parser.add_argument('--lr-steps', default='5,10,15', type=str,
                     help='list of learning rate decay epochs as in str')
@@ -97,6 +98,21 @@ train_data_loader = gluon.data.DataLoader(train_dataset, batch_size, shuffle=Tru
 valid_data_loader = gluon.data.DataLoader(valid_dataset, batch_size=1, last_batch='keep', num_workers=CPU_COUNT)
 
 
+def plot_mx_arrays(arrays):
+    """
+    Array expected to be height x width x 3 (channels), and values are floats between 0 and 255.
+    """
+    plt.subplots(figsize=(12, 4))
+    for idx, array in enumerate(arrays):
+        #assert array.shape[2] == 3, "RGB Channel should be last"
+        array = mx.nd.transpose(array, (1,2,0))
+        if array.shape[2] == 1:
+            array = mx.ndarray.concat(array, array, array, dim=2)
+        plt.subplot(1, 2, idx+1)
+        #print((array.clip(0, 255)/255))
+        plt.imshow((array.clip(0, 255)/255).asnumpy())
+
+
 def test(ctx, val_data):
     metric.reset()
     for batch_idx, (data,label) in enumerate(val_data):
@@ -107,77 +123,38 @@ def test(ctx, val_data):
         data = data.as_in_context(ctx[0])
         label = label.as_in_context(ctx[0])
         outputs = net(data)
+        
+        out_img=mx.ndarray.argmax_channel(outputs)
+        out_img=out_img.reshape(1,600,800)
+        in_img = data.squeeze()
+        in_label = label.reshape(1,600,800)
+        mask = mx.ndarray.concat(in_label,in_label,out_img,dim=0)
+        sample_base = in_img.astype('float32')
+        sample_mask = mask.astype('float32')
+
+        plot_mx_arrays([sample_base*255, sample_mask*255])
+        plt.show()
+
         metric.update([label], [outputs])
     return metric.get()
 
-def update_learning_rate(lr, trainer, epoch, ratio, steps):
-    new_lr = lr*(ratio**int(np.sum(np.array(steps)<epoch)))
-    trainer.set_learning_rate(new_lr)
-    return trainer
 
-def save_checkpoint(epoch, top1, best_acc):
-    if opt.save_frequency and (epoch + 1) % opt.save_frequency == 0:
-        fname = os.path.join(opt.prefix, '%s_%d_acc_%.4f.params' % (opt.model, epoch, top1))
-        net.save_params(fname)
-        logger.info('[Epoch %d] Saving checkpoint to %s with Accuracy: %.4f', epoch, fname, top1)
-    if top1 > best_acc[0]:
-        best_acc[0] = top1
-        fname = os.path.join(opt.prefix, '%s_best.params' % (opt.model))
-        net.save_params(fname)
-        logger.info('[Epoch %d] Saving checkpoint to %s with Accuracy: %.4f', epoch, fname, top1)
 
 def train(opt,ctx):
     if isinstance(ctx, mx.Context):
         ctx=[ctx]
     kv = mx.kv.create(opt.kvstore)
     net.collect_params().reset_ctx(ctx)
-    #trainer = gluon.Trainer(net.collect_params(), 'sgd', {'learning_rate': opt.lr, 'wd': opt.wd, 'momentum':opt.momentum, 'multi_precision': True}, kvstore=kv)
-    trainer = gluon.Trainer(net.collect_params(), 'adam', {'learning_rate': opt.lr}, kvstore=kv)
-    
+    trainer = gluon.Trainer(net.collect_params(), 'sgd', {'learning_rate': opt.lr, 'wd': opt.wd, 'momentum':opt.momentum, 'multi_precision': True}, kvstore=kv)
     #loss = gluon.loss.SoftmaxCrossEntropyLoss(axis=1)
     loss = MySoftmaxCrossEntropyLoss(axis=1)
     total_time = 0
     num_epochs = 0
     best_acc = [0]
-    for epoch in range(opt.start_epoch, opt.epochs):
-        trainer = update_learning_rate(opt.lr, trainer, epoch, opt.lr_factor,lr_steps)
-        tic = time.time()
-        metric.reset()
-        btic = time.time()
-        for i, (data, label) in enumerate(train_data_loader):
+  
+    name, val_acc = test(ctx, valid_data_loader)
+    logger.info('validation: %s=%f, %s=%f'%( name[0], val_acc[0], name[1], val_acc[1]))
 
-            data = data.as_in_context(ctx[0])
-            label = label.as_in_context(ctx[0])
-            
-            with mx.autograd.record():
-                output = net(data)
-                L = loss(output, label)  
-                L.backward()
-            trainer.step(data.shape[0])
-            metric.update([label],[output])
-            if opt.log_interval and not (i+1)%opt.log_interval:
-                name, acc = ['0','0','0'],['0','0','0']
-                name, acc = metric.get()#['0','0'],['0','0']#
-                logger.info('Epoch[%d] batch [%d]\t Speed: %f samples/sec\t %s: %s %s:%s %s:%s %f'%(
-                    epoch, i, batch_size/(time.time()-btic),name[0],acc[0],name[1],acc[1],name[2],acc[2],L.mean().asnumpy()
-                ))
-            btic = time.time()
-        epoch_time = time.time()-tic
-        
-        if num_epochs>0:
-            total_time = total_time + epoch_time
-        num_epochs = num_epochs + 1
-
-        name, acc = metric.get()
-        logger.info('[Epoch %d] training: %s=%f, %s=%f'%(epoch, name[0], acc[0], name[1], acc[1]))
-        logger.info('[Epoch %d] time cost: %f'%(epoch, epoch_time))
-        name, val_acc = test(ctx, valid_data_loader)
-        logger.info('[Epoch %d] validation: %s=%f, %s=%f'%(epoch, name[0], val_acc[0], name[1], val_acc[1]))
-        #val_acc=[0,0]
-        # save model if meet requirements
-        save_checkpoint(epoch, val_acc[0], best_acc)
-    if num_epochs > 1:
-        print('Average epoch time: {}'.format(float(total_time)/(num_epochs - 1)))
 
 
 

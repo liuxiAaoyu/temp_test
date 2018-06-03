@@ -6,11 +6,11 @@ from mxnet.gluon.contrib.nn import HybridConcurrent, Identity
 
 def _make_dense_layer(growth_rate, bn_size, dropout):
     new_features = nn.HybridSequential(prefix='')
-    new_features.add(nn.BatchNorm())
+    new_features.add(nn.BatchNorm(use_global_stats=True))
     new_features.add(nn.Activation('relu'))
     new_features.add(nn.Conv2D(bn_size*growth_rate,
                                kernel_size=1, use_bias=False))
-    new_features.add(nn.BatchNorm())
+    new_features.add(nn.BatchNorm(use_global_stats=True))
     new_features.add(nn.Activation('relu'))
     new_features.add(nn.Conv2D(growth_rate, kernel_size=3,
                                padding=1, use_bias=False))
@@ -24,11 +24,11 @@ def _make_dense_layer(growth_rate, bn_size, dropout):
 
 def _make_dense_layer_x(dilate, growth_rate, bn_size, dropout):
     new_features = nn.HybridSequential(prefix='')
-    new_features.add(nn.BatchNorm())
+    new_features.add(nn.BatchNorm(use_global_stats=True))
     new_features.add(nn.Activation('relu'))
     new_features.add(nn.Conv2D(bn_size*growth_rate,
                                kernel_size=1, use_bias=False))
-    new_features.add(nn.BatchNorm())
+    new_features.add(nn.BatchNorm(use_global_stats=True))
     new_features.add(nn.Activation('relu'))
     new_features.add(nn.Conv2D(growth_rate, kernel_size=3,
                                padding=dilate, dilation=dilate, use_bias=False))
@@ -59,7 +59,7 @@ def _make_dense_block_x(dalites, num_layers, bn_size, growth_rate, dropout, stag
 
 def _make_transition(num_output_features):
     out = nn.HybridSequential(prefix='')
-    out.add(nn.BatchNorm())
+    out.add(nn.BatchNorm(use_global_stats=True))
     out.add(nn.Activation('relu'))
     out.add(nn.Conv2D(num_output_features, kernel_size=1, use_bias=False))
     out.add(nn.AvgPool2D(pool_size=2, strides=2))
@@ -68,7 +68,7 @@ def _make_transition(num_output_features):
 
 def _make_transition_o(num_output_features):
     out = nn.HybridSequential(prefix='')
-    out.add(nn.BatchNorm())
+    out.add(nn.BatchNorm(use_global_stats=True))
     out.add(nn.Activation('relu'))
     out.add(nn.Conv2D(num_output_features, kernel_size=1, use_bias=False))
     return out
