@@ -159,9 +159,9 @@ def joint_transform_valid(base, mask):
     crop_height = 600
     crop_width = 800
     # Watch out: weight before height in size param!
-    #aug = mx.image.RandomCropAug(size=(crop_width, crop_height))
-    #aug_joint = aug(joint)
-    aug_joint = positional_augmentation(joint)
+    aug = mx.image.RandomCropAug(size=(crop_width, crop_height))
+    aug_joint = aug(joint)
+    #aug_joint = positional_augmentation(joint)
     ### Split
     aug_base = aug_joint[:, :, :base_channels]
     aug_mask = aug_joint[:, :, base_channels:]

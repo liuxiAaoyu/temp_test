@@ -38,6 +38,17 @@ def _apply_weighting(F, loss, weight=None, sample_weight=None):
     return loss
 
 
+class MySoftmaxCrossEntropyLossWithIngorLable(gluon.loss.Loss):
+    def __init__(self, label_calsses = 2, ignore_label=255, weight=None,
+                 batch_axis=0, **kwargs):
+        super(MySoftmaxCrossEntropyLossWithIngorLable, self).__init__(
+            weight, batch_axis, **kwargs)
+        self._label_calsses = label_calsses
+        self._ignore_label = ignore_label
+
+    def hybrid_forward(self, F, pred, label):
+        return F.SoftmaxOutput(pred, label, ignore_label=self._ignore_label,normalization='valid', use_ignore=True, multi_output=True)
+
 class MySoftmaxCrossEntropyLoss(gluon.loss.Loss):
     r"""Computes the softmax cross entropy loss. (alias: SoftmaxCELoss)
 
@@ -125,16 +136,37 @@ class MySoftmaxCrossEntropyLoss(gluon.loss.Loss):
         label_weights=[]
         for i in range(self._label_calsses):
             label_num = F.sum(label == i)
-            label_weights.append( F.broadcast_mul(
+            label_weights.append(F.broadcast_mul(
                 (label == i), 1/F.log(label_num/(labels_sum+0.0000001)+1.02)) )
         sample_weight = F.add_n(*label_weights)
 
         loss = _apply_weighting(
             F, loss, self._weight, sample_weight)
         return F.mean(loss, axis=self._batch_axis, exclude=True)
+#F.sum(loss)/F.sum(sample_weight)#
+#weight = label != i
 
+class DiscriminativeLoss(gluon.loss.Loss):
+    def __init__(self, axis=-1, label_calsses = 2, weight=None,
+                 batch_axis=0, **kwargs):
+        super(DiscriminativeLoss, self).__init__(
+            weight, batch_axis, **kwargs)
+        self._axis = axis
+        self._label_calsses = label_calsses
 
-def discriminative_loss_single(prediction, gt_label, feature_dim):
-    gt_label = gt_label.reshape(-1)
-    prediction = prediction.reshape((-1,3))
-    
+    def hybrid_forward(self, F, pred, label):
+        for i in range(pred.shape[0]):
+            gt_label = label[i]
+            prediction = pred[i]
+            #label_num = mx.nd.array([self.])
+            label_count = F.zeros(self._label_calsses)
+            prediction_same_labels = F.zeros(shape(self._label_calsses,3))
+            label_id = F.arange(self._label_calsses)
+            for j in label_id:
+                label_count[j] = F.sum(gt_label == j)
+                F.broadcast_mul(F.broadcast_axis(gt_label == j,axis=1,size=3),mx.nd.array([2]))
+                tmp_id = F.broadcast_axis(gt_label == j,axis=1,size=3)
+                prediction_id = prediction * temp_id
+                prediction_same_labels[j] = F.sum(prediction_id, axis=[0,2,3])
+                prediction_same_labels[j] = prediction_same_labels[j]/label_count[j]
+                

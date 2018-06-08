@@ -26,7 +26,7 @@ fh.setFormatter(formatter)
 parser = argparse.ArgumentParser(description='Train model')
 parser.add_argument('--dataset', type=str, default='cifar10',
                     help='dataset to use. options are mnist, cifar10, imagenet and dummy.')
-parser.add_argument('--data-dir', type=str, default='/media/xiaoyu/Document/data/TuSimple_Lane/train_set',
+parser.add_argument('--data-dir', type=str, default='/media/ihorse/Data/tmp/tusimple/train_set',
                     help='training directory of imagenet images, contains train/val subdirs.')
 parser.add_argument('--batch-size', type=int, default=1,
                     help='training batch size per device (CPU/GPU).')
@@ -58,7 +58,7 @@ parser.add_argument('--prefix', default='models', type=str,
                     help='path to checkpoint prefix, default is current working dir')
 parser.add_argument('--start-epoch', default=1, type=int,
                     help='starting epoch, 0 for fresh training, > 0 to resume')
-parser.add_argument('--resume', type=str, default='/home/xiaoyu/Documents/Segmentation/models/densenet121_19_acc_0.7891.params',
+parser.add_argument('--resume', type=str, default='/home/ihorse/Documents/temp_test/models/densenet121_best.params',
                     help='path to saved weight where you want resume')
 parser.add_argument('--lr-factor', default=0.1, type=float,
                     help='learning rate decay ratio')
