@@ -9,6 +9,8 @@ from glob import glob
 import cv2
 import matplotlib.pyplot as plt
 import random
+import math
+from PIL import Image
 
 image_list = []
 
@@ -85,22 +87,34 @@ class TuSimpleDataset(dataset.Dataset):
     def __len__(self):
         return len(self._image_list)
 
-
-def positional_augmentation(joint):
+def positional_augmentation(base, mask , crop_height, crop_width,area=(0.5,2.0),ratio=(0.6,1.4)):
     # Random crop
-    crop_height = 600
-    crop_width = 800
-    # Watch out: weight before height in size param!
-    # aug = mx.image.RandomCropAug(size=(crop_width, crop_height))
-    # aug_joint = aug(joint)
-    # # Deterministic resize
-    # resize_size = 600
-    # aug = mx.image.ResizeAug(resize_size)
-    # aug_joint = aug(aug_joint)
-    # Add more translation/scale/rotation augmentations here...
-    aug = mx.image.RandomSizedCropAug(size=(crop_width, crop_height), area=(0.1,1.5), ratio=(0.2,1.8), interp=0)
-    aug_joint = aug(joint)
-    return aug_joint
+    size=(crop_width, crop_height)
+    
+    
+    
+    h, w, _ = base.shape
+    src_area = h * w
+    target_area = random.uniform(area[0], area[1]) * src_area
+    new_ratio = random.uniform(*ratio)
+
+    new_w = int(round(np.sqrt(target_area * new_ratio)))
+    new_h = int(round(np.sqrt(target_area / new_ratio)))
+
+    if random.random() < 0.5:
+        new_h, new_w = new_w, new_h
+
+    if new_w > w:
+        new_w=w
+    if new_h > h:
+        new_h=h
+    x0 = random.randint(0, w - new_w)
+    y0 = random.randint(0, h - new_h)
+
+    base = mx.image.fixed_crop(base, x0, y0, new_w, new_h, size, interp=2)
+    mask = mx.image.fixed_crop(mask, x0, y0, new_w, new_h, size, interp=0)
+    return base, mask
+
 
 
 def color_augmentation(base):
@@ -120,24 +134,29 @@ def joint_transform(base, mask):
     #base = base.astype('float32')/255
     mask = mask.astype('float32')
 
-    ### Join
-    # Concatinate on channels dim, to obtain an 6 channel image
-    # (3 channels for the base image, plus 3 channels for the mask)
-    base_channels = base.shape[2]  # so we know where to split later on
-    joint = mx.nd.concat(base, mask, dim=2)
-
     ### Augmentation Part 1: positional
-    aug_joint = positional_augmentation(joint)
-    ### Split
-    aug_base = aug_joint[:, :, :base_channels]
-    aug_mask = aug_joint[:, :, base_channels:]
+    crop_height = 360
+    crop_width = 680
+    aug_base, aug_mask = positional_augmentation(base, mask, crop_height, crop_width)
+
+    aug = gluon.data.vision.transforms.Resize((int(aug_base.shape[1]/2), int(aug_base.shape[0]/2)), interpolation=0)
+    aug_mask = aug(aug_mask)
+
+    stride = 8
+    feat_height = int(math.ceil(float(crop_height) / stride))
+    feat_width = int(math.ceil(float(crop_width) / stride))
+    cell_width = 2
+    aug_mask = aug_mask.reshape((feat_height, int(stride / cell_width), feat_width, int(stride / cell_width)))
+    aug_mask = mx.nd.transpose(aug_mask, (1, 3, 0, 2))
+    aug_mask = aug_mask.reshape((-1, feat_height, feat_width))
+    aug_mask = aug_mask.reshape(-1)
 
     ### Augmentation Part 2: color
     aug_base = color_augmentation(aug_base)
 
     aug_base = mx.nd.transpose(aug_base, (2,0,1))
-    aug_mask = mx.nd.transpose(aug_mask, (2,0,1))
-    aug_mask = aug_mask.flatten()
+    # aug_mask = mx.nd.transpose(aug_mask, (2,0,1))
+    # aug_mask = aug_mask.flatten()
 
     return aug_base, aug_mask
 
@@ -146,32 +165,37 @@ def joint_transform_valid(base, mask):
     base = mx.image.color_normalize(base.astype('float32')/255,
                                     mean=mx.nd.array([0.485, 0.456, 0.406]),
                                     std=mx.nd.array([0.229, 0.224, 0.225]))
+    # base = mx.image.color_normalize(base.astype('float32'),
+    #                                 mean=mx.nd.array([122.675, 116.669, 104.008])
+    #                                 )
+                                    
     #base = base.astype('float32')/255
     mask = mask.astype('float32')
 
-    ### Join
-    # Concatinate on channels dim, to obtain an 6 channel image
-    # (3 channels for the base image, plus 3 channels for the mask)
-    base_channels = base.shape[2]  # so we know where to split later on
-    joint = mx.nd.concat(base, mask, dim=2)
-
     ### Augmentation Part 1: positional
-    crop_height = 600
-    crop_width = 800
+    crop_height = 360#base.shape[0]
+    crop_width = 680#base.shape[1]
     # Watch out: weight before height in size param!
-    aug = mx.image.RandomCropAug(size=(crop_width, crop_height))
-    aug_joint = aug(joint)
-    #aug_joint = positional_augmentation(joint)
-    ### Split
-    aug_base = aug_joint[:, :, :base_channels]
-    aug_mask = aug_joint[:, :, base_channels:]
+    aug_base, aug_mask = positional_augmentation(base, mask, crop_height, crop_width,area=(1.0,1.0),ratio=(1.0,1.0))
+
+    
+    aug = gluon.data.vision.transforms.Resize((int(crop_width/2), int(crop_height/2)), interpolation=0)
+    aug_mask = aug(aug_mask)
+
+    stride = 8
+    feat_height = int(math.ceil(float(crop_height) / stride))
+    feat_width = int(math.ceil(float(crop_width) / stride))
+    cell_width = 2
+    aug_mask = aug_mask.reshape((feat_height, int(stride / cell_width), feat_width, int(stride / cell_width)))
+    aug_mask = mx.nd.transpose(aug_mask, (1, 3, 0, 2))
+    aug_mask = aug_mask.reshape((-1, feat_height, feat_width))
+    aug_mask = aug_mask.reshape(-1)
 
     aug_base = mx.nd.transpose(aug_base, (2,0,1))
-    aug_mask = mx.nd.transpose(aug_mask, (2,0,1))
-    aug_mask = aug_mask.flatten()
+    # aug_mask = mx.nd.transpose(aug_mask, (2,0,1))
+    # aug_mask = aug_mask.flatten()
 
     return aug_base, aug_mask
-
 
 def plot_mx_arrays(arrays):
     """
@@ -188,8 +212,37 @@ def plot_mx_arrays(arrays):
         plt.imshow((array.clip(0, 255)/255).asnumpy())
 
 
+# def plot_mx_arrays_val(arrays):
+#     """
+#     Array expected to be height x width x 3 (channels), and values are floats between 0 and 255.
+#     """
+#     plt.subplots(figsize=(12, 4))
+#     array = mx.nd.transpose(arrays[0], (1,2,0))
+#     if array.shape[2] == 1:
+#         array = mx.ndarray.concat(array, array, array, dim=2)
+#     plt.subplot(1, 3, 1)
+#     plt.imshow((array.clip(0, 255)/255).asnumpy())
+
+#     array = mx.nd.squeeze(arrays[1])
+#     #if array.shape[2] == 1:
+#     #    array = mx.ndarray.concat(array, array, array, dim=2)
+#     raw_labels = array.clip(0, 255).asnumpy()
+#     result_img = Image.fromarray(colorize(raw_labels))#.resize([512,512])
+#     plt.subplot(1, 3, 2)
+#     plt.imshow(result_img)
+
+#     array = mx.nd.squeeze(arrays[2])
+#     #if array.shape[2] == 1:
+#     #    array = mx.ndarray.concat(array, array, array, dim=2)
+#     raw_labels = array.clip(0, 255).asnumpy()
+#     result_img = Image.fromarray(colorize(raw_labels))#.resize([512,512])
+#     plt.subplot(1, 3, 3)
+#     plt.imshow(result_img)
+#     plt.show()
+
+
 if __name__ == '__main__':
-    image_dir = '/media/xiaoyu/Document/data/TuSimple_Lane/train_set'
+    image_dir = '/media/ihorse/Data/tmp/tusimple/train_set'
     image_list = image_list(image_dir, 0.9)
     dataset = TuSimpleDataset(image_dir, image_list.train_list, joint_transform)
     print(dataset.__len__())
@@ -198,5 +251,24 @@ if __name__ == '__main__':
         sample = dataset.__getitem__(index)
         sample_base = sample[0].astype('float32')
         sample_mask = sample[1].astype('float32')
+        
+        crop_height, crop_width = sample_base.shape[1], sample_base.shape[2]
+        stride = 8
+        test_width = (int(crop_width) / stride) * stride
+        test_height = (int(crop_height) / stride) * stride
+        feat_width = int(test_width / stride)
+        feat_height = int(test_height / stride)
+        # re-arrange duc results
+        labels = sample_mask.reshape((1, int(8/2), int(8/2),
+                                    feat_height, feat_width))
+        labels = mx.nd.transpose(labels, (0, 3, 1, 4, 2))
+        labels = labels.reshape((1, int(test_height / 2), int(test_width / 2)))
+
+        #labels = labels[:, :test_height, :test_width]
+        labels = mx.nd.transpose(labels, [1, 2, 0])
+        #labels = gluon.data.vision.transforms.Resize((test_width, test_height))(labels)
+        sample_mask = mx.nd.transpose(labels, [2, 0, 1])
+
+        #sample_mask = sample_mask.reshape(int(sample_base.shape[-2]/2),int(sample_base.shape[-1]/2))
         plot_mx_arrays([sample_base*255, sample_mask*255])
         plt.show()

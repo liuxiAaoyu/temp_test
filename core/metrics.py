@@ -105,12 +105,13 @@ class SoftmaxLoss(mx.metric.EvalMetric):
 
     def update(self, labels, preds):
         mx.metric.check_label_shapes(labels, preds)
-
+        
         loss = 0.0
         cnt = 0.0
         eps = 1e-6
         for i in range(len(labels)):
-            prediction = preds[i].asnumpy()[:]
+            predsi=mx.nd.softmax(preds[i],axis=1)
+            prediction = predsi.asnumpy()[:]
             shape = prediction.shape
             if len(shape) == 4:
                 shape = (shape[0], shape[1], shape[2]*shape[3])
@@ -121,7 +122,12 @@ class SoftmaxLoss(mx.metric.EvalMetric):
             for b in range(soft_label.shape[0]):
                 for c in range(self._label_num):
                     soft_label[b][c][label[b][0] == c] = 1.0
-
+            #a=np.ones_like(prediction[soft_label == 1])
+            #a= a*eps
+            #b=a<prediction[soft_label == 1]
+            #c=prediction[soft_label == 1]*b           
+            #b=a>=prediction[soft_label == 1]
+            #loss += (-np.log(c + eps*b)).sum()
             loss += (-np.log(prediction[soft_label == 1] + eps)).sum()
             cnt += prediction[soft_label == 1].size
         self.sum_metric += loss

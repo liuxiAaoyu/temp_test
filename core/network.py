@@ -3,6 +3,8 @@ from mxnet.gluon import nn
 from mxnet.gluon.block import HybridBlock
 from mxnet.gluon.contrib.nn import HybridConcurrent, Identity
 
+from network_pretrained import network
+
 
 def _make_dense_layer(growth_rate, bn_size, dropout):
     new_features = nn.HybridSequential(prefix='')
@@ -137,49 +139,38 @@ class DenseNet_x(HybridBlock):
             num_features = num_features//2
             # self.features.add(_make_dense_block(
             #     block_config[1], bn_size, growth_rate, dropout, 2))
+            pre_features =  network.DenseNet_x(classes=19)
+            pre_features.load_params('/home/ihorse/Documents/temp_test/densenet121_x_best.params')
 
-            pre_features = mx.gluon.model_zoo.vision.densenet121(
-                pretrained=True).features
             for i in range(7):
-                self.features.add(pre_features[i])
+                self.features.add(pre_features.features[i])
 
             self.features_x = nn.HybridSequential(prefix='')
+            for i in range(4):
+                self.features_x.add(pre_features.features_x[i])
 
-            num_features = num_features + block_config[1]*growth_rate
-            self.features_x.add(_make_transition_o(num_features//2))
-            num_features = num_features//2
+            self.DUC = nn.HybridSequential(prefix='')
+            self.DUC.add(self._make_layer(DUC, 'duc', classes))
 
-            dalites = [1, 2, 5, 9, 1, 2, 5, 9, 1, 2, 5,
-                       9, 1, 2, 5, 9, 1, 2, 5, 9, 1, 2, 5, 9]
-            self.features_x.add(_make_dense_block_x(
-                dalites, block_config[2], bn_size, growth_rate, dropout, 3))
-            num_features = num_features + block_config[2]*growth_rate
-            self.features_x.add(_make_transition_o(num_features//2))
-            num_features = num_features//2
-
-            dalites = [2, 5, 9, 17, 2, 5, 9, 17, 2, 5, 9, 17, 2, 5, 9, 17]
-            self.features_x.add(_make_dense_block_x(
-                dalites, block_config[3], bn_size, growth_rate, dropout, 4))
-
-            self.features_x.add(self._make_layer(DUC, 'duc'))
-
-    def _make_layer(self, block, stage_index, label_num=2, ignore_lable=255, aspp_num=4, aspp_stride=6, cell_cap=64):
+    def _make_layer(self, block, stage_index, label_num=2, ignore_lable=255, aspp_num=4, aspp_stride=6, cell_cap=16):
         layer = nn.HybridSequential(prefix='stage%s_' % stage_index)
         with layer.name_scope():
             layer.add(block(label_num, ignore_lable,
-                            aspp_num, aspp_stride, cell_cap,))
+                            aspp_num, aspp_stride, cell_cap))
         return layer
 
     def hybrid_forward(self, F, x):
         x = self.features(x)
         x = self.features_x(x)
+        x = self.DUC(x)
         return x
 
 
 if __name__ == '__main__':
-    net = DenseNet_x()
+    net = DenseNet_x(classes=2)
     #net.features.initialize(mx.init.Xavier())
     net.features_x.initialize(mx.init.Xavier())
+    net.DUC.initialize(mx.init.Xavier())
     net.hybridize()
     x = mx.nd.random_normal(shape=(16, 3, 480, 480))
     for i in net.features:
@@ -190,10 +181,7 @@ if __name__ == '__main__':
         print(i.name, x.shape)
 
     x = mx.nd.random_normal(shape=(16, 3, 480, 480))
-    pre_net = mx.gluon.model_zoo.vision.densenet121(pretrained=True)
-    for i in pre_net.features:
-        x = i(x)
-        print(i.name, x.shape)
+
     #print(net.features[0].weight.data())
     x = mx.nd.zeros(shape=(16, 3, 480, 480))
     net(x)
@@ -220,9 +208,8 @@ if __name__ == '__main__':
     #     net.features_x.params.get(i).set_data(pre_net.features.params.get(pre_net.features.prefix+i[len(net.features_x.prefix):]))
     
     names1 = [i for i in net.collect_params()]
-    names2 = [i for i in pre_net.collect_params()]
 
     net.save_params('densenet121HDCUDC.params')
 
-    print(len(names1),len(names2))
+    print(len(names1))
     print("finish")

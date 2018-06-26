@@ -27,15 +27,15 @@ parser.add_argument('--dataset', type=str, default='cifar10',
                     help='dataset to use. options are mnist, cifar10, imagenet and dummy.')
 parser.add_argument('--data-dir', type=str, default='/media/ihorse/Data/tmp/tusimple/train_set',
                     help='training directory of imagenet images, contains train/val subdirs.')
-parser.add_argument('--batch-size', type=int, default=4,
+parser.add_argument('--batch-size', type=int, default=1,
                     help='training batch size per device (CPU/GPU).')
 parser.add_argument('--num-worker', '-j', dest='num_workers', default=6, type=int,
                     help='number of workers of dataloader.')
 parser.add_argument('--gpus', type=str, default='0',
                     help='ordinates of gpus to use, can be "0,1,2" or empty for cpu only.')
-parser.add_argument('--epochs', type=int, default=20,
+parser.add_argument('--epochs', type=int, default=50,
                     help='number of training epochs.')
-parser.add_argument('--lr', type=float, default=0.001,
+parser.add_argument('--lr', type=float, default=0.0001,
                     help='learning rate. default is 0.1.')
 parser.add_argument('--momentum', type=float, default=0.9,
                     help='momentum value for optimizer, default is 0.9.')
@@ -61,7 +61,7 @@ parser.add_argument('--resume', type=str, default='/home/ihorse/Documents/temp_t
                     help='path to saved weight where you want resume')
 parser.add_argument('--lr-factor', default=0.8, type=float,
                     help='learning rate decay ratio')
-parser.add_argument('--lr-steps', default='5,10,15', type=str,
+parser.add_argument('--lr-steps', default='5,10,15,20,25,30,25,40,45', type=str,
                     help='list of learning rate decay epochs as in str')
 parser.add_argument('--dtype', default='float32', type=str,
                     help='data type, float32 or float16 if applicable')
@@ -69,7 +69,7 @@ parser.add_argument('--save-frequency', default=1, type=int,
                     help='epoch frequence to save model, best model will always be saved')
 parser.add_argument('--kvstore', type=str, default='device',
                     help='kvstore to use for trainer/module.')
-parser.add_argument('--log-interval', type=int, default=1,
+parser.add_argument('--log-interval', type=int, default=10,
                     help='Number of batches to wait before logging.')
 parser.add_argument('--profile', action='store_false',
                     help='Option to turn on memory profiling for front-end, '\
@@ -84,14 +84,14 @@ context = [mx.gpu(int(i)) for i in opt.gpus.split(',')] if opt.gpus.strip() else
 num_gpus = len(context)
 batch_size *= max(1, num_gpus)
 lr_steps = [int(x) for x in opt.lr_steps.split(',') if x.strip()]
-metric = CompositeEvalMetric([metrics.TPAccMetric(ignore_label=5), metrics.IoUMetric(ignore_label=5, label_num=2), metrics.AccWithIgnoreMetric(ignore_label=5) ])
+metric = CompositeEvalMetric([metrics.AccWithIgnoreMetric(ignore_label=5), metrics.IoUMetric(ignore_label=5, label_num=2), metrics.SoftmaxLoss(ignore_label=255, label_num=2) ])
 
 net = network.DenseNet_x(classes=2)
 net.load_params(opt.resume)#, ctx=context)
 
 CPU_COUNT = cpu_count()
 image_list = data_lodar.image_list(opt.data_dir, 0.9)
-train_dataset = data_lodar.TuSimpleDataset(opt.data_dir, image_list.train_list[:100], data_lodar.joint_transform)
+train_dataset = data_lodar.TuSimpleDataset(opt.data_dir, image_list.train_list, data_lodar.joint_transform)
 valid_dataset = data_lodar.TuSimpleDataset(opt.data_dir, image_list.valid_list, data_lodar.joint_transform_valid)
 train_data_loader = gluon.data.DataLoader(train_dataset, batch_size, shuffle=True, last_batch='keep', num_workers=CPU_COUNT)
 valid_data_loader = gluon.data.DataLoader(valid_dataset, batch_size=1, last_batch='keep', num_workers=CPU_COUNT)
