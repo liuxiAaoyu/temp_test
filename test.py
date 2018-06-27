@@ -124,13 +124,39 @@ def test(ctx, val_data):
         label = label.as_in_context(ctx[0])
         outputs = net(data)
         
-        out_img=mx.ndarray.argmax_channel(outputs)
-        out_img=out_img.reshape(1,600,800)
+        print(data.shape)
+        print(label.shape)
+        out_img=mx.ndarray.argmax_channel(mx.ndarray.softmax(outputs,axis=1))
+        print(out_img.shape)
+        w=int(360/2)
+        h=int(680/2)
+        out_img=out_img.reshape(1,h,w)
+        #out_img=out_img.reshape(1,512,512)
         in_img = data.squeeze()
-        in_label = label.reshape(1,600,800)
-        mask = mx.ndarray.concat(in_label,in_label,out_img,dim=0)
+        in_label = label.reshape(1,h,w)
+        #mask = mx.ndarray.concat(in_label,in_label,out_img,dim=0)
         sample_base = in_img.astype('float32')
-        sample_mask = mask.astype('float32')
+        sample_mask = out_img.astype('float32')
+
+        crop_height, crop_width = sample_base.shape[1], sample_base.shape[2]
+        stride = 8
+        test_width = (int(crop_width) / stride) * stride
+        test_height = (int(crop_height) / stride) * stride
+        feat_width = int(test_width / stride)
+        feat_height = int(test_height / stride)
+        # re-arrange duc results
+        labels = sample_mask.reshape((1, int(8/2), int(8/2),
+                                    feat_height, feat_width))
+        labels = mx.nd.transpose(labels, (0, 3, 1, 4, 2))
+        labels = labels.reshape((1, int(test_height / 2), int(test_width / 2)))
+
+        #labels = labels[:, :test_height, :test_width]
+        labels = mx.nd.transpose(labels, [1, 2, 0])
+        #labels = gluon.data.vision.transforms.Resize((test_width, test_height))(labels)
+        sample_mask = mx.nd.transpose(labels, [2, 0, 1])
+
+        
+       # bdd100k_data_lodar.plot_mx_arrays_val([sample_base*255, sample_mask,in_label])
 
         plot_mx_arrays([sample_base*255, sample_mask*255])
         plt.show()
